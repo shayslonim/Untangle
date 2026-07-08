@@ -82,31 +82,72 @@ export function App() {
     refresh();
   }, [refresh]);
 
-  const onLog = async () => {
-    const created = await api.createEntry();
-    setEntries((prev) => [created, ...prev]);
-    api.stats().then(setStats);
-    flash("Logged — take a breath");
+  // Optimistic create: show the entry immediately with a temporary id, then
+  // swap in the server's version once it confirms. On failure, drop the
+  // placeholder and tell the user — nothing was actually saved.
+  const createOptimistic = async (
+    patch: Partial<Entry>,
+    successMsg: string
+  ) => {
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const optimistic: Entry = {
+      id: tempId,
+      ts: new Date().toISOString(),
+      sites: patch.sites ?? [],
+      triggers: patch.triggers ?? [],
+      mode: patch.mode ?? null,
+      note: patch.note ?? "",
+      resisted: patch.resisted ?? false,
+    };
+    setEntries((prev) => [optimistic, ...prev]);
+    flash(successMsg);
+    try {
+      const created = await api.createEntry(patch);
+      setEntries((prev) => prev.map((e) => (e.id === tempId ? created : e)));
+      api.stats().then(setStats);
+    } catch {
+      setEntries((prev) => prev.filter((e) => e.id !== tempId));
+      flash("Couldn't save that — please try again");
+    }
   };
 
-  const onResist = async () => {
-    const created = await api.createEntry({ resisted: true });
-    setEntries((prev) => [created, ...prev]);
-    api.stats().then(setStats);
-    flash("Urge resisted — that's a win 💪");
-  };
+  const onLog = () => createOptimistic({}, "Logged — take a breath");
 
+  const onResist = () =>
+    createOptimistic({ resisted: true }, "Urge resisted — that's a win 💪");
+
+  // Optimistic edit: apply the patch right away, reconcile with the server's
+  // returned entry, and roll back to the previous value if it fails.
   const onPatch = async (id: string, patch: Partial<Entry>) => {
-    const updated = await api.updateEntry(id, patch);
-    setEntries((prev) => prev.map((e) => (e.id === id ? updated : e)));
-    api.stats().then(setStats);
+    const prevEntry = entries.find((e) => e.id === id);
+    setEntries((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, ...patch } : e))
+    );
+    try {
+      const updated = await api.updateEntry(id, patch);
+      setEntries((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      api.stats().then(setStats);
+    } catch {
+      if (prevEntry) {
+        setEntries((prev) => prev.map((e) => (e.id === id ? prevEntry : e)));
+      }
+      flash("Couldn't save that change");
+    }
   };
 
+  // Optimistic delete: remove immediately, restore the whole prior list (to
+  // keep ordering) if the server rejects it.
   const onDelete = async (id: string) => {
-    await api.deleteEntry(id);
+    const snapshot = entries;
     setEntries((prev) => prev.filter((e) => e.id !== id));
-    api.stats().then(setStats);
     flash("Entry removed");
+    try {
+      await api.deleteEntry(id);
+      api.stats().then(setStats);
+    } catch {
+      setEntries(snapshot);
+      flash("Couldn't remove that entry");
+    }
   };
 
   return (
