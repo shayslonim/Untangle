@@ -34,7 +34,11 @@ export const api = {
     return fetch(`/api/stats?tzOffset=${tzOffset}&today=${today}`).then(json<Stats>);
   },
 
-  exportUrl: (format: "csv" | "json") => `/api/export?format=${format}`,
+  exportText: (format: "csv" | "json") =>
+    fetch(`/api/export?format=${format}`).then(async (res) => {
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.text();
+    }),
 
   importEntries: (entries: unknown[], replace: boolean) =>
     fetch("/api/import", {

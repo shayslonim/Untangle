@@ -432,6 +432,138 @@ button {
   background: #fff;
   color: var(--lilac-deep);
 }
+.btn.solid {
+  border: 1px solid var(--lilac);
+  background: var(--lilac);
+  color: #fff;
+  cursor: pointer;
+}
+.btn.solid:hover {
+  background: var(--lilac-deep);
+  border-color: var(--lilac-deep);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.btn {
+  cursor: pointer;
+}
+
+/* ---- data modal (export / import) ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(65, 59, 78, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+.modal-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 8px;
+}
+.modal-title {
+  font-family: var(--display);
+  font-size: 20px;
+  margin: 0;
+}
+.modal-x {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.modal-x:hover {
+  background: var(--line);
+}
+.modal-body {
+  padding: 4px 18px;
+  overflow-y: auto;
+}
+.modal-foot {
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px 16px;
+}
+.modal-hint {
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin: 10px 0 6px;
+}
+.modal-error {
+  color: var(--lilac-deep);
+  background: var(--blush);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.modal-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 12px;
+  cursor: pointer;
+}
+.seg {
+  display: inline-flex;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+}
+.seg button {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 800;
+  font-size: 13px;
+  padding: 6px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--lilac);
+  color: #fff;
+}
+.data-preview {
+  margin: 10px 0 4px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre;
+}
 
 /* ---- banner / toast ---- */
 .banner {

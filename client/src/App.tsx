@@ -122,7 +122,7 @@ export function App() {
             onRemoveCustomTrigger={removeCustomTrigger}
           />
         ) : (
-          <Trends stats={stats} />
+          <Trends stats={stats} onImported={refresh} flash={flash} />
         )}
       </main>
 

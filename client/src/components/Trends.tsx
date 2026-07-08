@@ -1,8 +1,16 @@
 import type { Stats } from "../types";
-import { api } from "../api";
 import { BarChart } from "./BarChart";
+import { DataTools } from "./DataTools";
 
-export function Trends({ stats }: { stats: Stats | null }) {
+export function Trends({
+  stats,
+  onImported,
+  flash,
+}: {
+  stats: Stats | null;
+  onImported: () => void;
+  flash: (msg: string) => void;
+}) {
   if (!stats) return <section className="view">Loading…</section>;
 
   const cards = [
@@ -33,14 +41,7 @@ export function Trends({ stats }: { stats: Stats | null }) {
       <h2 className="chart-title">Last 30 days</h2>
       <BarChart data={stats.monthSeries} variant="month" />
 
-      <div className="export-row">
-        <a className="btn ghost" href={api.exportUrl("csv")}>
-          Export CSV
-        </a>
-        <a className="btn ghost" href={api.exportUrl("json")}>
-          Export JSON
-        </a>
-      </div>
+      <DataTools onImported={onImported} flash={flash} />
     </section>
   );
 }
