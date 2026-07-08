@@ -3,11 +3,16 @@ import type { Entry, Mode } from "../types";
 import { SITES, TRIGGERS, MODES } from "../types";
 import { ChipRowMulti, ChipRowSingle } from "./ChipRow";
 
-const timeFmt = (iso: string) =>
-  new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const timeFmt = (iso: string, showSeconds: boolean) =>
+  new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(showSeconds ? { second: "2-digit" } : {}),
+  });
 
 export function EntryCard({
   entry,
+  showSeconds,
   onPatch,
   onDelete,
   customTriggers,
@@ -15,6 +20,7 @@ export function EntryCard({
   onRemoveCustomTrigger,
 }: {
   entry: Entry;
+  showSeconds: boolean;
   onPatch: (patch: Partial<Entry>) => void;
   onDelete: () => void;
   customTriggers: string[];
@@ -41,7 +47,7 @@ export function EntryCard({
   return (
     <div className={`entry${modeClass}`}>
       <div className="entry-head">
-        <span className="entry-time">{timeFmt(entry.ts)}</span>
+        <span className="entry-time">{timeFmt(entry.ts, showSeconds)}</span>
         {entry.resisted && <span className="pill resisted">💪 resisted</span>}
         <div className="entry-tags">
           {tags.map((t, i) => (

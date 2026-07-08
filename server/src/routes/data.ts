@@ -45,7 +45,7 @@ export function dataRoutes(app: FastifyInstance, repo: EntryRepo, userId: string
       for (const e of entries) {
         rows.push([
           e.ts.toISOString().slice(0, 10),
-          e.ts.toISOString().slice(11, 16),
+          e.ts.toISOString().slice(11, 19),
           e.resisted ? "resisted" : "pull",
           e.sites.join(" | "),
           e.triggers.join(" | "),

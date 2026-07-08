@@ -1,3 +1,8 @@
+import { existsSync } from "node:fs";
+// Load server/.env into process.env when present (local dev). No-op in prod
+// (Render injects env vars directly, no .env file on disk).
+if (existsSync(".env")) process.loadEnvFile(".env");
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { openDb } from "./db/sqlite/db.js";

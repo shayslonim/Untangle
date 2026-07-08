@@ -3,12 +3,21 @@ import { api } from "./api";
 import type { Entry, Stats } from "./types";
 import { Today } from "./components/Today";
 import { Trends } from "./components/Trends";
+import { Settings } from "./components/Settings";
 
 type View = "today" | "trends";
 
 // User-added trigger suggestions live on-device (they're a UI preference, not
 // per-entry data). Selected triggers themselves are still stored per entry.
 const CUSTOM_TRIGGERS_KEY = "untangle.customTriggers";
+
+// Display preference: show log times to the second. On-device only — timestamps
+// are always stored and exported with full precision regardless.
+const SHOW_SECONDS_KEY = "untangle.showSeconds";
+
+function loadShowSeconds(): boolean {
+  return localStorage.getItem(SHOW_SECONDS_KEY) === "true";
+}
 
 function loadCustomTriggers(): string[] {
   try {
@@ -26,6 +35,13 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [customTriggers, setCustomTriggers] = useState<string[]>(loadCustomTriggers);
+  const [showSeconds, setShowSeconds] = useState<boolean>(loadShowSeconds);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const toggleShowSeconds = (next: boolean) => {
+    setShowSeconds(next);
+    localStorage.setItem(SHOW_SECONDS_KEY, String(next));
+  };
 
   const addCustomTrigger = (opt: string) => {
     const label = opt.trim();
@@ -97,14 +113,24 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">Untangle 🌿</div>
-        <nav className="top-nav">
-          <button className={view === "today" ? "on" : ""} onClick={() => setView("today")}>
-            Today
+        <div className="topbar-right">
+          <nav className="top-nav">
+            <button className={view === "today" ? "on" : ""} onClick={() => setView("today")}>
+              Today
+            </button>
+            <button className={view === "trends" ? "on" : ""} onClick={() => setView("trends")}>
+              Trends
+            </button>
+          </nav>
+          <button
+            className="settings-btn"
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙️
           </button>
-          <button className={view === "trends" ? "on" : ""} onClick={() => setView("trends")}>
-            Trends
-          </button>
-        </nav>
+        </div>
       </header>
 
       {error && <div className="banner">{error}</div>}
@@ -120,6 +146,7 @@ export function App() {
             customTriggers={customTriggers}
             onAddCustomTrigger={addCustomTrigger}
             onRemoveCustomTrigger={removeCustomTrigger}
+            showSeconds={showSeconds}
           />
         ) : (
           <Trends stats={stats} onImported={refresh} flash={flash} />
@@ -134,6 +161,14 @@ export function App() {
           Trends
         </button>
       </nav>
+
+      {settingsOpen && (
+        <Settings
+          onClose={() => setSettingsOpen(false)}
+          showSeconds={showSeconds}
+          onToggleSeconds={toggleShowSeconds}
+        />
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>

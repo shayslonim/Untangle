@@ -11,6 +11,7 @@ export function Today({
   customTriggers,
   onAddCustomTrigger,
   onRemoveCustomTrigger,
+  showSeconds,
 }: {
   entries: Entry[];
   onLog: () => void;
@@ -20,6 +21,7 @@ export function Today({
   customTriggers: string[];
   onAddCustomTrigger: (opt: string) => void;
   onRemoveCustomTrigger: (opt: string) => void;
+  showSeconds: boolean;
 }) {
   const todayKey = localDayKey(new Date());
   const today = entries
@@ -73,6 +75,7 @@ export function Today({
             <EntryCard
               key={e.id}
               entry={e}
+              showSeconds={showSeconds}
               onPatch={(patch) => onPatch(e.id, patch)}
               onDelete={() => onDelete(e.id)}
               customTriggers={customTriggers}

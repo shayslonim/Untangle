@@ -51,9 +51,26 @@ button {
   font-weight: 700;
   font-size: 22px;
 }
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .top-nav {
   display: none;
   gap: 6px;
+}
+.settings-btn {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.settings-btn:hover {
+  background: #fff;
 }
 .top-nav button,
 .bottom-nav button {
@@ -563,6 +580,60 @@ button.btn {
   max-height: 40vh;
   overflow: auto;
   white-space: pre;
+}
+
+/* ---- settings ---- */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+.setting-label {
+  display: block;
+  font-weight: 800;
+  font-size: 15px;
+}
+.setting-hint {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+.switch:checked {
+  background: var(--lilac);
+}
+.switch:checked::after {
+  transform: translateX(18px);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--lilac-deep);
+  outline-offset: 2px;
 }
 
 /* ---- banner / toast ---- */
