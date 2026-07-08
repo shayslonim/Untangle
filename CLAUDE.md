@@ -135,7 +135,9 @@ export interface EntryRepo {
 
 ## Data model
 
-SQLite is the source of truth. An entry is one row:
+SQLite is the source of truth, accessed via Node's built-in **`node:sqlite`**
+(`DatabaseSync`) — no native module to compile, no extra dependency. An entry
+is one row:
 
 ```sql
 CREATE TABLE entries (

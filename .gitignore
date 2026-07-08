@@ -8,3 +8,13 @@ Thumbs.db
 # local backups exported from the app
 untangle-*.json
 untangle-*.csv
+
+# dependencies / build output
+node_modules/
+dist/
+
+# env + local SQLite database
+.env
+*.db
+*.db-shm
+*.db-wal
