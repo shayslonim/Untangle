@@ -29,6 +29,17 @@ single-user (at most a handful) app, and the DB is just a file — no service to
 run. Postgres is a documented future option if scale ever demands it; the data
 layering below is designed so that swap costs almost nothing above the repo.
 
+**Storage backends.** Two `EntryRepo` implementations exist, chosen at boot by
+env (see `server/src/index.ts`):
+- `db/sqlite/` — local file via Node's `node:sqlite`. The dev default.
+- `db/libsql/` — **Turso / libSQL**, for persistent off-box storage in prod
+  (Render's disk is ephemeral). Set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`
+  to enable it. By default it runs as an **embedded replica**: a local file
+  (`LIBSQL_REPLICA_FILE`) kept in sync with the remote, so reads are
+  local-disk fast and Turso is the durable source of truth. Turso is
+  SQLite-compatible, so the schema, migrations, and the `dailyCounts`
+  aggregation SQL are identical to the SQLite repo.
+
 ```
 untangle-repo/
   client/            # React + Vite SPA
