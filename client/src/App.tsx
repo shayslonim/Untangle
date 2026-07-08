@@ -6,12 +6,45 @@ import { Trends } from "./components/Trends";
 
 type View = "today" | "trends";
 
+// User-added trigger suggestions live on-device (they're a UI preference, not
+// per-entry data). Selected triggers themselves are still stored per entry.
+const CUSTOM_TRIGGERS_KEY = "untangle.customTriggers";
+
+function loadCustomTriggers(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(CUSTOM_TRIGGERS_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function App() {
   const [view, setView] = useState<View>("today");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [customTriggers, setCustomTriggers] = useState<string[]>(loadCustomTriggers);
+
+  const addCustomTrigger = (opt: string) => {
+    const label = opt.trim();
+    if (!label) return;
+    setCustomTriggers((prev) => {
+      if (prev.some((t) => t.toLowerCase() === label.toLowerCase())) return prev;
+      const next = [...prev, label];
+      localStorage.setItem(CUSTOM_TRIGGERS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const removeCustomTrigger = (opt: string) => {
+    setCustomTriggers((prev) => {
+      const next = prev.filter((t) => t !== opt);
+      localStorage.setItem(CUSTOM_TRIGGERS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -38,6 +71,13 @@ export function App() {
     setEntries((prev) => [created, ...prev]);
     api.stats().then(setStats);
     flash("Logged — take a breath");
+  };
+
+  const onResist = async () => {
+    const created = await api.createEntry({ resisted: true });
+    setEntries((prev) => [created, ...prev]);
+    api.stats().then(setStats);
+    flash("Urge resisted — that's a win 💪");
   };
 
   const onPatch = async (id: string, patch: Partial<Entry>) => {
@@ -71,7 +111,16 @@ export function App() {
 
       <main className="container">
         {view === "today" ? (
-          <Today entries={entries} onLog={onLog} onPatch={onPatch} onDelete={onDelete} />
+          <Today
+            entries={entries}
+            onLog={onLog}
+            onResist={onResist}
+            onPatch={onPatch}
+            onDelete={onDelete}
+            customTriggers={customTriggers}
+            onAddCustomTrigger={addCustomTrigger}
+            onRemoveCustomTrigger={removeCustomTrigger}
+          />
         ) : (
           <Trends stats={stats} />
         )}

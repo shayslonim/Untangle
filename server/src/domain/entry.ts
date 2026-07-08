@@ -16,6 +16,7 @@ export interface Entry {
   triggers: string[];
   mode: Mode | null;
   note: string;
+  resisted: boolean; // an urge the user resisted, not a pull — never counted
 }
 
 // Fields accepted when creating/updating from the client. `id`/`ts` are
@@ -26,6 +27,7 @@ export interface EntryInput {
   triggers?: string[];
   mode?: Mode | null;
   note?: string;
+  resisted?: boolean;
 }
 
 // The wire shape the client consumes. Kept separate from `Entry` so internal
@@ -37,6 +39,7 @@ export interface EntryDTO {
   triggers: string[];
   mode: Mode | null;
   note: string;
+  resisted: boolean;
 }
 
 export function toDTO(e: Entry): EntryDTO {
@@ -47,6 +50,7 @@ export function toDTO(e: Entry): EntryDTO {
     triggers: e.triggers,
     mode: e.mode,
     note: e.note,
+    resisted: e.resisted,
   };
 }
 
@@ -68,5 +72,6 @@ export function parseInput(body: unknown): EntryInput {
   if ("triggers" in b) input.triggers = asStringArray(b.triggers);
   if ("mode" in b) input.mode = isMode(b.mode) ? b.mode : null;
   if (typeof b.note === "string") input.note = b.note;
+  if ("resisted" in b) input.resisted = b.resisted === true;
   return input;
 }

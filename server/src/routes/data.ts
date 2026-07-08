@@ -29,6 +29,7 @@ function mapImported(raw: any): EntryInput {
     triggers,
     mode: isMode(raw?.mode) ? raw.mode : null,
     note: typeof raw?.note === "string" ? raw.note : "",
+    resisted: raw?.resisted === true,
   };
 }
 
@@ -40,11 +41,12 @@ export function dataRoutes(app: FastifyInstance, repo: EntryRepo, userId: string
     const stamp = new Date().toISOString().slice(0, 10);
 
     if (req.query.format === "csv") {
-      const rows = [["date", "time", "sites", "triggers", "mode", "note"]];
+      const rows = [["date", "time", "kind", "sites", "triggers", "mode", "note"]];
       for (const e of entries) {
         rows.push([
           e.ts.toISOString().slice(0, 10),
           e.ts.toISOString().slice(11, 16),
+          e.resisted ? "resisted" : "pull",
           e.sites.join(" | "),
           e.triggers.join(" | "),
           e.mode ?? "",

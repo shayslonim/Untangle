@@ -14,6 +14,7 @@ interface EntryRow {
   triggers: string;
   mode: string | null;
   note: string;
+  resisted: number; // 0 | 1
 }
 
 function parseArray(json: string): string[] {
@@ -34,6 +35,7 @@ function rowToEntry(r: EntryRow): Entry {
     triggers: parseArray(r.triggers),
     mode: (r.mode as Mode | null) ?? null,
     note: r.note,
+    resisted: !!r.resisted,
   };
 }
 
@@ -63,8 +65,8 @@ export class SqliteEntryRepo implements EntryRepo {
     const ts = input.ts ? new Date(input.ts).toISOString() : new Date().toISOString();
     this.db
       .prepare(
-        `INSERT INTO entries (id, user_id, ts, sites, triggers, mode, note)
-         VALUES (@id, @user_id, @ts, @sites, @triggers, @mode, @note)`
+        `INSERT INTO entries (id, user_id, ts, sites, triggers, mode, note, resisted)
+         VALUES (@id, @user_id, @ts, @sites, @triggers, @mode, @note, @resisted)`
       )
       .run({
         id,
@@ -74,6 +76,7 @@ export class SqliteEntryRepo implements EntryRepo {
         triggers: JSON.stringify(input.triggers ?? []),
         mode: input.mode ?? null,
         note: input.note ?? "",
+        resisted: input.resisted ? 1 : 0,
       });
     return (await this.get(userId, id))!;
   }
@@ -83,7 +86,7 @@ export class SqliteEntryRepo implements EntryRepo {
     if (!existing) return null;
     this.db
       .prepare(
-        `UPDATE entries SET ts=@ts, sites=@sites, triggers=@triggers, mode=@mode, note=@note
+        `UPDATE entries SET ts=@ts, sites=@sites, triggers=@triggers, mode=@mode, note=@note, resisted=@resisted
          WHERE user_id=@user_id AND id=@id`
       )
       .run({
@@ -92,6 +95,8 @@ export class SqliteEntryRepo implements EntryRepo {
         triggers: JSON.stringify(patch.triggers ?? existing.triggers),
         mode: patch.mode !== undefined ? patch.mode : existing.mode,
         note: patch.note !== undefined ? patch.note : existing.note,
+        resisted:
+          patch.resisted !== undefined ? (patch.resisted ? 1 : 0) : existing.resisted ? 1 : 0,
         user_id: userId,
         id,
       });
@@ -113,7 +118,7 @@ export class SqliteEntryRepo implements EntryRepo {
     const rows = this.db
       .prepare(
         `SELECT date(ts, ?) AS day, COUNT(*) AS count
-         FROM entries WHERE user_id = ?
+         FROM entries WHERE user_id = ? AND resisted = 0
          GROUP BY day ORDER BY day`
       )
       .all(modifier, userId) as unknown as { day: string; count: number }[];
@@ -126,8 +131,8 @@ export class SqliteEntryRepo implements EntryRepo {
     replace: boolean
   ): Promise<number> {
     const insert = this.db.prepare(
-      `INSERT INTO entries (id, user_id, ts, sites, triggers, mode, note)
-       VALUES (@id, @user_id, @ts, @sites, @triggers, @mode, @note)`
+      `INSERT INTO entries (id, user_id, ts, sites, triggers, mode, note, resisted)
+       VALUES (@id, @user_id, @ts, @sites, @triggers, @mode, @note, @resisted)`
     );
     this.db.exec("BEGIN");
     try {
@@ -144,6 +149,7 @@ export class SqliteEntryRepo implements EntryRepo {
           triggers: JSON.stringify(e.triggers ?? []),
           mode: e.mode ?? null,
           note: e.note ?? "",
+          resisted: e.resisted ? 1 : 0,
         });
         n++;
       }

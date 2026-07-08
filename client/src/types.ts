@@ -25,6 +25,7 @@ export const TRIGGERS = [
   "Tired",
   "Thinking",
   "Sadness",
+  "Itchiness",
   "Screen time",
   "Idle hands",
   "In bed",
@@ -41,6 +42,7 @@ export interface Entry {
   triggers: string[];
   mode: Mode | null;
   note: string;
+  resisted: boolean;
 }
 
 export interface DayPoint {

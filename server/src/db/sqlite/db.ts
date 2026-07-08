@@ -27,6 +27,12 @@ const MIGRATIONS: { name: string; sql: string }[] = [
       CREATE INDEX idx_entries_user_ts ON entries(user_id, ts);
     `,
   },
+  {
+    name: "002_add_resisted",
+    // A resisted urge is a win, not a pull. Flag it so it never counts toward
+    // the pull tallies (see dailyCounts) but is still logged and celebrated.
+    sql: `ALTER TABLE entries ADD COLUMN resisted INTEGER NOT NULL DEFAULT 0;`,
+  },
 ];
 
 function migrate(db: DatabaseSync): void {

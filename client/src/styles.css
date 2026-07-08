@@ -119,6 +119,38 @@ button {
 .log-btn:active {
   transform: translateY(1px);
 }
+.log-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.log-row .log-btn {
+  flex: 1;
+}
+.resist-btn {
+  flex: 0 0 auto;
+  width: 64px;
+  border: none;
+  border-radius: 50%;
+  background: var(--sage);
+  color: #2f2b3a;
+  font-size: 26px;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(175, 216, 196, 0.5);
+  transition: background 0.15s, transform 0.05s;
+}
+.resist-btn:hover {
+  background: #97cbb2;
+}
+.resist-btn:active {
+  transform: translateY(1px);
+}
+.hero-resisted {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 700;
+}
 .log-hint {
   text-align: center;
   color: var(--ink-soft);
@@ -149,6 +181,10 @@ button {
 }
 .entry.focused {
   border-left-color: var(--blush);
+}
+.entry.resisted {
+  border-left-color: var(--sage);
+  background: #fbfdfb;
 }
 .entry-head {
   display: flex;
@@ -182,6 +218,9 @@ button {
   background: var(--blush);
 }
 .pill.mode {
+  background: var(--sage);
+}
+.pill.resisted {
   background: var(--sage);
 }
 .link {
@@ -247,6 +286,78 @@ button {
 .chips.mode .chip.on {
   background: var(--sage);
   border-color: var(--sage);
+}
+
+/* custom, user-added chips: a chip with a removable × */
+.chip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.chip-wrap .chip {
+  padding-right: 26px;
+}
+.chip-x {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(65, 59, 78, 0.12);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip-x:hover {
+  background: rgba(65, 59, 78, 0.24);
+}
+.chip-add {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.chip-add input {
+  font-family: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  width: 120px;
+  color: var(--ink);
+}
+.chip-add-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--lilac-deep);
+  font-weight: 800;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.chip-add-btn:disabled {
+  color: var(--ink-soft);
+  opacity: 0.6;
+}
+
+.detail-done {
+  align-self: flex-end;
+  margin-top: 10px;
+  border: none;
+  background: var(--lilac);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  padding: 8px 22px;
+  border-radius: 999px;
+}
+.detail-done:hover {
+  background: var(--lilac-deep);
 }
 
 /* ---- trends ---- */

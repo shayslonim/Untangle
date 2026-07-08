@@ -10,16 +10,27 @@ export function EntryCard({
   entry,
   onPatch,
   onDelete,
+  customTriggers,
+  onAddCustomTrigger,
+  onRemoveCustomTrigger,
 }: {
   entry: Entry;
   onPatch: (patch: Partial<Entry>) => void;
   onDelete: () => void;
+  customTriggers: string[];
+  onAddCustomTrigger: (opt: string) => void;
+  onRemoveCustomTrigger: (opt: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState(entry.note);
 
-  const modeClass =
-    entry.mode === "Focused" ? " focused" : entry.mode === "Automatic" ? " automatic" : "";
+  const modeClass = entry.resisted
+    ? " resisted"
+    : entry.mode === "Focused"
+      ? " focused"
+      : entry.mode === "Automatic"
+        ? " automatic"
+        : "";
 
   const tags = [
     ...entry.sites.map((s) => ({ cls: "site", label: s })),
@@ -31,6 +42,7 @@ export function EntryCard({
     <div className={`entry${modeClass}`}>
       <div className="entry-head">
         <span className="entry-time">{timeFmt(entry.ts)}</span>
+        {entry.resisted && <span className="pill resisted">💪 resisted</span>}
         <div className="entry-tags">
           {tags.map((t, i) => (
             <span key={i} className={`pill ${t.cls}`}>
@@ -63,6 +75,9 @@ export function EntryCard({
             options={TRIGGERS}
             selected={entry.triggers}
             onChange={(triggers) => onPatch({ triggers })}
+            customOptions={customTriggers}
+            onAddCustom={onAddCustomTrigger}
+            onRemoveCustom={onRemoveCustomTrigger}
           />
           <label>Automatic or focused?</label>
           <ChipRowSingle
@@ -79,6 +94,9 @@ export function EntryCard({
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => note !== entry.note && onPatch({ note })}
           />
+          <button type="button" className="detail-done" onClick={() => setOpen(false)}>
+            Done
+          </button>
         </div>
       )}
     </div>
