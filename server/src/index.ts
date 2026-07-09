@@ -34,17 +34,30 @@ const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN;
 const REPLICA_FILE = process.env.LIBSQL_REPLICA_FILE ?? "file:local-replica.db";
 const SYNC_INTERVAL = Number(process.env.LIBSQL_SYNC_INTERVAL ?? 60);
 
+// In dev (`npm run dev` sets NODE_ENV=development) a Turso failure — e.g. a
+// missing/invalid TURSO_AUTH_TOKEN — falls back to local SQLite so you can keep
+// working. In prod (`npm start`) it must NOT fall back: silently running on the
+// ephemeral SQLite file would lose data, so we let it crash and surface loudly.
+const IS_DEV = process.env.NODE_ENV === "development";
+
 async function openRepo(log: (msg: string) => void): Promise<EntryRepo> {
   if (TURSO_URL) {
     const useReplica = REPLICA_FILE.length > 0;
     log(useReplica ? `libSQL embedded replica (${REPLICA_FILE})` : "libSQL remote");
-    const db = await openLibsql({
-      url: useReplica ? REPLICA_FILE : TURSO_URL,
-      syncUrl: useReplica ? TURSO_URL : undefined,
-      authToken: TURSO_TOKEN,
-      syncInterval: useReplica ? SYNC_INTERVAL : undefined,
-    });
-    return new LibsqlEntryRepo(db);
+    try {
+      const db = await openLibsql({
+        url: useReplica ? REPLICA_FILE : TURSO_URL,
+        syncUrl: useReplica ? TURSO_URL : undefined,
+        authToken: TURSO_TOKEN,
+        syncInterval: useReplica ? SYNC_INTERVAL : undefined,
+      });
+      return new LibsqlEntryRepo(db);
+    } catch (err) {
+      if (!IS_DEV) throw err; // prod: fail loud rather than lose data on SQLite
+      log(
+        `Turso unavailable (${(err as Error).message}) — falling back to local SQLite for dev`
+      );
+    }
   }
   log(`SQLite file (${DATABASE_FILE})`);
   return new SqliteEntryRepo(openDb(DATABASE_FILE));
