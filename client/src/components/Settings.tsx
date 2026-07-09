@@ -7,10 +7,14 @@ export function Settings({
   onClose,
   showSeconds,
   onToggleSeconds,
+  rememberDevice,
+  onToggleRemember,
 }: {
   onClose: () => void;
   showSeconds: boolean;
   onToggleSeconds: (next: boolean) => void;
+  rememberDevice: boolean;
+  onToggleRemember: (next: boolean) => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -47,6 +51,22 @@ export function Settings({
               className="switch"
               checked={showSeconds}
               onChange={(e) => onToggleSeconds(e.target.checked)}
+            />
+          </label>
+
+          <label className="setting-row">
+            <span>
+              <span className="setting-label">Remember data on this device</span>
+              <span className="setting-hint">
+                Keeps your log on this device so it loads instantly, even before
+                the server wakes up. Turn off on shared or public computers.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="switch"
+              checked={rememberDevice}
+              onChange={(e) => onToggleRemember(e.target.checked)}
             />
           </label>
         </div>

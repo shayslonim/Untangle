@@ -240,6 +240,13 @@ button {
 .pill.resisted {
   background: var(--sage);
 }
+/* Pending sync — tentative look (dashed, muted), not a bright/confirmed color. */
+.pill.unsynced {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px dashed var(--ink-soft);
+  padding: 2px 8px;
+}
 .link {
   border: none;
   background: transparent;
@@ -639,13 +646,19 @@ button.btn {
 /* ---- banner / toast ---- */
 .banner {
   max-width: 640px;
-  margin: 0 auto;
+  margin: 8px auto 0;
   background: var(--butter);
   color: #6b5b1f;
   padding: 10px 16px;
   border-radius: 10px;
   font-weight: 700;
   font-size: 14px;
+  text-align: center;
+}
+/* Calm variant — "waking up" / "syncing": informational, never alarming. */
+.banner.calm {
+  background: color-mix(in srgb, var(--periwinkle) 45%, #fff);
+  color: var(--lilac-deep);
 }
 .toast {
   position: fixed;

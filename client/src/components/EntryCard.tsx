@@ -13,6 +13,7 @@ const timeFmt = (iso: string, showSeconds: boolean) =>
 export function EntryCard({
   entry,
   showSeconds,
+  unsynced,
   onPatch,
   onDelete,
   customTriggers,
@@ -21,6 +22,7 @@ export function EntryCard({
 }: {
   entry: Entry;
   showSeconds: boolean;
+  unsynced: boolean;
   onPatch: (patch: Partial<Entry>) => void;
   onDelete: () => void;
   customTriggers: string[];
@@ -48,6 +50,11 @@ export function EntryCard({
     <div className={`entry${modeClass}`}>
       <div className="entry-head">
         <span className="entry-time">{timeFmt(entry.ts, showSeconds)}</span>
+        {unsynced && (
+          <span className="pill unsynced" title="Saved on this device — will sync when the server is reachable">
+            Not synced yet
+          </span>
+        )}
         {entry.resisted && <span className="pill resisted">💪 resisted</span>}
         <div className="entry-tags">
           {tags.map((t, i) => (

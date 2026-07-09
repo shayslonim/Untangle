@@ -1,8 +1,12 @@
 import type { Entry, Stats } from "./types";
+import { ApiError } from "./sync";
 
-// Thin typed API client. No business logic here — just fetch + JSON.
+// Thin typed API client. No business logic here — just fetch + JSON. A non-2xx
+// response throws ApiError (carrying the status, so the outbox can distinguish
+// a permanent 4xx from a transient 5xx); a failed fetch rejects with the native
+// TypeError, which the outbox reads as a network failure.
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
   return res.json() as Promise<T>;
 }
 
@@ -25,7 +29,7 @@ export const api = {
 
   deleteEntry: async (id: string) => {
     const res = await fetch(`/api/entries/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
   },
 
   stats: () => {

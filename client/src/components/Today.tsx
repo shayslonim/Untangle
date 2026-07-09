@@ -12,6 +12,7 @@ export function Today({
   onAddCustomTrigger,
   onRemoveCustomTrigger,
   showSeconds,
+  markUnsynced,
 }: {
   entries: Entry[];
   onLog: () => void;
@@ -22,6 +23,9 @@ export function Today({
   onAddCustomTrigger: (opt: string) => void;
   onRemoveCustomTrigger: (opt: string) => void;
   showSeconds: boolean;
+  // When true, entries still awaiting their first successful sync (temp ids)
+  // get a "not synced" label. Delayed upstream so fast online saves don't flash.
+  markUnsynced: boolean;
 }) {
   const todayKey = localDayKey(new Date());
   const today = entries
@@ -76,6 +80,7 @@ export function Today({
               key={e.id}
               entry={e}
               showSeconds={showSeconds}
+              unsynced={markUnsynced && e.id.startsWith("temp-")}
               onPatch={(patch) => onPatch(e.id, patch)}
               onDelete={() => onDelete(e.id)}
               customTriggers={customTriggers}
