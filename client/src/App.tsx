@@ -243,13 +243,15 @@ export function App() {
     return () => window.clearTimeout(t);
   }, [serverStatus]);
 
-  // While a retry is pending, tick every second so the banner countdown and the
-  // elapsed-time escalation stay current.
+  // While offline, tick every second so the banner countdown and the elapsed-time
+  // escalation stay current. Keyed on serverStatus (not nextRetryAt) so it's a
+  // single steady interval — re-arming it on every 3s retry would reset the 1s
+  // cadence and could leave the countdown looking frozen.
   useEffect(() => {
-    if (nextRetryAt === null) return;
+    if (serverStatus === "online") return;
     const iv = window.setInterval(() => setTick((t) => t + 1), 1000);
     return () => window.clearInterval(iv);
-  }, [nextRetryAt]);
+  }, [serverStatus]);
 
   const toggleShowSeconds = (next: boolean) => {
     setShowSeconds(next);
@@ -377,20 +379,24 @@ export function App() {
         sub: n > 0 ? `${n} change${n === 1 ? "" : "s"} will sync when you reconnect` : undefined,
       };
     }
-    // Countdown to the next scheduled retry: " in 3s" … " in 0s". Every value
-    // is the same width, so the line never reflows as it ticks down.
-    const secsLeft = nextRetryAt ? Math.max(0, Math.ceil((nextRetryAt - Date.now()) / 1000)) : null;
-    const retry = secsLeft !== null ? ` in ${secsLeft}s` : "";
-    if (lastFailKind === "http") {
-      return { cls: "banner", text: `The server is having trouble — retrying${retry}`, sub: queued };
-    }
-    // Estimated time until a cold server finishes booting, counting down from
-    // ~60s. While it's positive we show it ("ready in ~Ns"); once it passes the
-    // estimate the boot is running long, so we drop to the plain retry copy.
+    // A cold boot looks like EITHER an unreachable server (network TypeError) or
+    // a 5xx from the edge/proxy while the app starts (Render, or Vite's dev proxy
+    // to a down backend). So for the first ~60s we show one optimistic boot
+    // countdown regardless of which symptom we hit — this is what makes the
+    // countdown actually appear (real boots usually surface as 5xx) and keeps the
+    // banner consistent as the symptom flips between network and http mid-boot.
     const elapsed = firstFailAt ? Date.now() - firstFailAt : 0;
     const bootLeft = Math.max(0, Math.ceil((BOOT_ESTIMATE_MS - elapsed) / 1000));
     if (bootLeft > 0) {
       return { cls: "banner calm", text: `Waking up the server — ready in ~${bootLeft}s`, sub: queued };
+    }
+    // Past the estimate the boot is running long. Now the failure kind matters:
+    // countdown to the next 3s retry, with copy for whether the server answered
+    // (5xx → "having trouble") or was unreachable (network → "taking a while").
+    const secsLeft = nextRetryAt ? Math.max(0, Math.ceil((nextRetryAt - Date.now()) / 1000)) : null;
+    const retry = secsLeft !== null ? ` in ${secsLeft}s` : "";
+    if (lastFailKind === "http") {
+      return { cls: "banner", text: `The server is having trouble — retrying${retry}`, sub: queued };
     }
     return { cls: "banner calm", text: `Server's taking a while — retrying${retry}`, sub: queued };
   })();
