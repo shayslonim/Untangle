@@ -9,12 +9,17 @@ import {
   loadCachedEntries,
   loadCachedStats,
   cacheSnapshot,
+  loadCachedTriggers,
+  cacheTriggers,
   loadRemember,
   saveRemember,
   clearCache,
   loadQueue,
   saveQueue,
+  loadTriggerQueue,
+  saveTriggerQueue,
   type PendingOp,
+  type TriggerOp,
 } from "./cache";
 
 type View = "today" | "trends";
@@ -30,8 +35,11 @@ type ServerStatus = "online" | "offline";
 // (server up but failing). null = no failure recorded yet.
 type FailKind = "network" | "http" | null;
 
-// User-added trigger suggestions live on-device (they're a UI preference, not
-// per-entry data). Selected triggers themselves are still stored per entry.
+// Legacy on-device-only store for user-added trigger suggestions. Custom
+// triggers are now synced through the server (cache + outbox, like entries), so
+// this key survives only to migrate a returning user's device-local list up to
+// the server once, after which it's removed. Selected triggers themselves are
+// still stored per entry.
 const CUSTOM_TRIGGERS_KEY = "untangle.customTriggers";
 
 // How long to wait between reconnection attempts while offline.
@@ -88,7 +96,7 @@ function pendingIdsOf(queue: PendingOp[]): Set<string> {
   return ids;
 }
 
-function loadCustomTriggers(): string[] {
+function loadLegacyCustomTriggers(): string[] {
   try {
     const v = JSON.parse(localStorage.getItem(CUSTOM_TRIGGERS_KEY) ?? "[]");
     return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
@@ -115,7 +123,21 @@ export function App() {
   const [nextRetryAt, setNextRetryAt] = useState<number | null>(null);
   // Forces the banner to recompute the countdown / elapsed-time escalation.
   const [, setTick] = useState(0);
-  const [customTriggers, setCustomTriggers] = useState<string[]>(loadCustomTriggers);
+  // Custom trigger suggestions, now server-synced. Seed from the on-device
+  // cache; on the very first run since they became synced there's no cache yet,
+  // so fall back to the legacy device-local list (which the migration effect
+  // below then uploads).
+  const [customTriggers, setCustomTriggers] = useState<string[]>(
+    () => loadCachedTriggers() ?? loadLegacyCustomTriggers()
+  );
+  // Captured now, before any persistence effect writes the trigger cache: a null
+  // cache means this is the first load since triggers became synced, so any
+  // legacy device-local triggers still need uploading.
+  const needsTriggerMigrationRef = useRef(loadCachedTriggers() === null);
+  // Custom-trigger outbox: pending add/remove ops, replayed on sync. Kept
+  // compacted (an add+remove of the same label nets to nothing) so it holds
+  // only real changes.
+  const triggerOutboxRef = useRef<TriggerOp[]>(loadTriggerQueue());
   const [showSeconds, setShowSeconds] = useState<boolean>(loadShowSeconds);
   const [rememberDevice, setRememberDevice] = useState<boolean>(loadRemember);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -163,10 +185,23 @@ export function App() {
     [notePersist]
   );
 
+  const commitTriggerQueue = useCallback(
+    (next: TriggerOp[]) => {
+      triggerOutboxRef.current = next;
+      notePersist(saveTriggerQueue(next));
+    },
+    [notePersist]
+  );
+
   // Persist the current view whenever it changes (no-op when remember is off).
   useEffect(() => {
     notePersist(cacheSnapshot(entries, stats));
   }, [entries, stats, notePersist]);
+
+  // Cache the trigger suggestions whenever they change (no-op when remember off).
+  useEffect(() => {
+    notePersist(cacheTriggers(customTriggers));
+  }, [customTriggers, notePersist]);
 
   // Hooks bridging the framework-agnostic sync engine (sync.ts) to React state.
   const syncHooks: SyncHooks = useMemo(
@@ -179,8 +214,11 @@ export function App() {
         console.warn("[sync] dropping rejected op", op, err);
         flash("A change couldn't be saved and was skipped");
       },
+      getTriggerQueue: () => triggerOutboxRef.current,
+      setTriggerQueue: (next) => commitTriggerQueue(next),
+      setTriggers: (list) => setCustomTriggers(list),
     }),
-    [commitQueue]
+    [commitQueue, commitTriggerQueue]
   );
 
   // The single sync path: flush the outbox then pull authoritative state (see
@@ -224,6 +262,25 @@ export function App() {
     return () => window.removeEventListener("online", onOnline);
   }, [sync]);
 
+  // One-time migration: the first time this device runs the server-synced
+  // version, push any legacy on-device custom triggers into the outbox so they
+  // upload, then retire the old key. Runs once (guarded by the ref captured at
+  // first render, before the trigger cache is written).
+  useEffect(() => {
+    if (!needsTriggerMigrationRef.current) return;
+    needsTriggerMigrationRef.current = false;
+    const legacy = loadLegacyCustomTriggers();
+    if (legacy.length > 0) {
+      const ts = new Date().toISOString();
+      commitTriggerQueue([
+        ...triggerOutboxRef.current,
+        ...legacy.map((label) => ({ kind: "add" as const, label, ts })),
+      ]);
+      sync();
+    }
+    localStorage.removeItem(CUSTOM_TRIGGERS_KEY);
+  }, [commitTriggerQueue, sync]);
+
   // Scheduled retry: each failed sync sets nextRetryAt, and this fires the next
   // attempt at that time. A fresh failure sets a new nextRetryAt, re-arming it.
   useEffect(() => {
@@ -264,28 +321,45 @@ export function App() {
     if (on) {
       notePersist(cacheSnapshot(entries, stats));
       notePersist(saveQueue(outboxRef.current));
+      notePersist(cacheTriggers(customTriggers));
+      notePersist(saveTriggerQueue(triggerOutboxRef.current));
     } else {
       clearCache();
     }
   };
 
+  // Fold a trigger change into the outbox as a single NET op. An add cancels a
+  // still-queued remove of the same label (and vice versa) so a quick toggle
+  // leaves nothing to send; a duplicate op is ignored. Both ops are idempotent
+  // server-side, so this is about avoiding redundant round-trips, not safety.
+  const enqueueTriggerOp = (kind: "add" | "remove", label: string) => {
+    const q = triggerOutboxRef.current;
+    const opposite = kind === "add" ? "remove" : "add";
+    if (q.some((o) => o.label === label && o.kind === opposite)) {
+      commitTriggerQueue(q.filter((o) => o.label !== label)); // toggle nets to nothing
+      return;
+    }
+    if (q.some((o) => o.label === label && o.kind === kind)) return; // already queued
+    commitTriggerQueue([...q, { kind, label, ts: new Date().toISOString() }]);
+  };
+
+  // Optimistic add: show it right away, queue the write, sync. Server is the
+  // source of truth — the pull after flush reconciles across devices.
   const addCustomTrigger = (opt: string) => {
     const label = opt.trim();
     if (!label) return;
-    setCustomTriggers((prev) => {
-      if (prev.some((t) => t.toLowerCase() === label.toLowerCase())) return prev;
-      const next = [...prev, label];
-      localStorage.setItem(CUSTOM_TRIGGERS_KEY, JSON.stringify(next));
-      return next;
-    });
+    if (customTriggers.some((t) => t.toLowerCase() === label.toLowerCase())) return;
+    setCustomTriggers((prev) => [...prev, label]);
+    enqueueTriggerOp("add", label);
+    sync();
   };
 
+  // Optimistic remove: drop it locally, queue the delete, sync — which then
+  // propagates to every other client on their next pull.
   const removeCustomTrigger = (opt: string) => {
-    setCustomTriggers((prev) => {
-      const next = prev.filter((t) => t !== opt);
-      localStorage.setItem(CUSTOM_TRIGGERS_KEY, JSON.stringify(next));
-      return next;
-    });
+    setCustomTriggers((prev) => prev.filter((t) => t !== opt));
+    enqueueTriggerOp("remove", opt);
+    sync();
   };
 
   // Optimistic create: show the entry immediately with a temporary id and queue

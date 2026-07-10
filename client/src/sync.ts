@@ -1,5 +1,5 @@
 import type { Entry, Stats } from "./types";
-import type { PendingOp } from "./cache";
+import type { PendingOp, TriggerOp } from "./cache";
 
 // Thrown by the API client for a non-2xx response, carrying the HTTP status so
 // the outbox can tell a permanent client error (4xx) from a transient server
@@ -20,6 +20,9 @@ export interface SyncApi {
   deleteEntry(id: string): Promise<void>;
   listEntries(): Promise<Entry[]>;
   stats(): Promise<Stats>;
+  addTrigger(label: string): Promise<void>;
+  removeTrigger(label: string): Promise<void>;
+  listTriggers(): Promise<string[]>;
 }
 
 // State callbacks, wired to React state in the app and to plain arrays in tests.
@@ -29,6 +32,11 @@ export interface SyncHooks {
   setEntries(update: (prev: Entry[]) => Entry[]): void;
   setStats(s: Stats): void;
   onDrop(op: PendingOp, err: unknown): void;
+  // Custom-trigger outbox + authoritative list. Separate from the entry outbox
+  // because trigger ops have no id-remapping — just idempotent add/remove.
+  getTriggerQueue(): TriggerOp[];
+  setTriggerQueue(next: TriggerOp[]): void;
+  setTriggers(list: string[]): void;
 }
 
 export type FailKind = "network" | "http";
@@ -83,17 +91,44 @@ export async function flushQueue(api: SyncApi, hooks: SyncHooks): Promise<void> 
   }
 }
 
-// Full sync: flush the outbox, THEN pull authoritative state. The ordering is
-// the safety-critical part — the list fetch only runs once flushQueue has fully
-// drained, so a write that's still queued for retry (a transient failure threw
-// above) is never clobbered by fetched server state. On any failure we report
-// offline + why, and the caller leaves the optimistic entries in place.
+// Replay queued custom-trigger changes, FIFO. Both kinds are idempotent on the
+// server (add = INSERT OR IGNORE, remove = DELETE), so a re-sent op is harmless.
+// Same transient-vs-permanent contract as flushQueue: a transient failure
+// rethrows (queue kept, retried later); a permanent 4xx drops just that op.
+export async function flushTriggerQueue(api: SyncApi, hooks: SyncHooks): Promise<void> {
+  let queue = hooks.getTriggerQueue();
+  while (queue.length > 0) {
+    const op = queue[0];
+    try {
+      if (op.kind === "add") await api.addTrigger(op.label);
+      else await api.removeTrigger(op.label);
+      queue = queue.slice(1);
+      hooks.setTriggerQueue(queue);
+    } catch (err) {
+      if (isTransient(err)) throw err; // keep the queue, retry later
+      queue = queue.slice(1); // permanent — drop the bad op and continue
+      hooks.setTriggerQueue(queue);
+    }
+  }
+}
+
+// Full sync: flush the outboxes, THEN pull authoritative state. The ordering is
+// the safety-critical part — the list fetch only runs once the outboxes have
+// fully drained, so a write that's still queued for retry (a transient failure
+// threw above) is never clobbered by fetched server state. On any failure we
+// report offline + why, and the caller leaves the optimistic state in place.
 export async function runSync(api: SyncApi, hooks: SyncHooks): Promise<SyncResult> {
   try {
     await flushQueue(api, hooks);
-    const [entries, stats] = await Promise.all([api.listEntries(), api.stats()]);
+    await flushTriggerQueue(api, hooks);
+    const [entries, stats, triggers] = await Promise.all([
+      api.listEntries(),
+      api.stats(),
+      api.listTriggers(),
+    ]);
     hooks.setEntries(() => entries);
     hooks.setStats(stats);
+    hooks.setTriggers(triggers);
     return { ok: true, failKind: null };
   } catch (err) {
     return { ok: false, failKind: err instanceof ApiError ? "http" : "network" };

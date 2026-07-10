@@ -20,4 +20,12 @@ export interface EntryRepo {
   // Bulk insert for JSON import (restore / migrate). `replace` wipes the
   // user's existing entries first.
   importEntries(userId: string, entries: EntryInput[], replace: boolean): Promise<number>;
+
+  // User-added trigger suggestions (custom categories), stored server-side so
+  // they sync across a user's devices. Just a per-user set of labels — the
+  // authoritative list every client replaces its local copy with on sync.
+  // add/remove are idempotent so replaying a client's offline outbox is safe.
+  listTriggers(userId: string): Promise<string[]>;
+  addTrigger(userId: string, label: string): Promise<void>;
+  removeTrigger(userId: string, label: string): Promise<void>;
 }

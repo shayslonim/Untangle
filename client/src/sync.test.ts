@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ApiError, isTransient, flushQueue, runSync, type SyncApi, type SyncHooks } from "./sync";
-import type { PendingOp } from "./cache";
+import {
+  ApiError,
+  isTransient,
+  flushQueue,
+  flushTriggerQueue,
+  runSync,
+  type SyncApi,
+  type SyncHooks,
+} from "./sync";
+import type { PendingOp, TriggerOp } from "./cache";
 import type { Entry, Stats } from "./types";
 
 const TS = "2026-07-09T10:00:00.000Z";
@@ -12,11 +20,20 @@ function entry(id: string, note = ""): Entry {
 
 // A fake in-memory server. `errors` lets a test inject failures per operation;
 // each entry is a queue of errors to throw on successive calls (undefined = ok).
-type Op = "create" | "update" | "delete" | "list";
+type Op = "create" | "update" | "delete" | "list" | "addTrigger" | "removeTrigger" | "listTriggers";
 function makeApi(errors: Partial<Record<Op, (unknown | undefined)[]>> = {}) {
   const store: Entry[] = [];
+  const triggers = new Set<string>();
   let seq = 1;
-  const calls: Record<Op, number> = { create: 0, update: 0, delete: 0, list: 0 };
+  const calls: Record<Op, number> = {
+    create: 0,
+    update: 0,
+    delete: 0,
+    list: 0,
+    addTrigger: 0,
+    removeTrigger: 0,
+    listTriggers: 0,
+  };
   const maybeThrow = (op: Op) => {
     const err = errors[op]?.[calls[op]];
     calls[op]++;
@@ -57,16 +74,30 @@ function makeApi(errors: Partial<Record<Op, (unknown | undefined)[]>> = {}) {
     async stats() {
       return {} as Stats;
     },
+    async addTrigger(label) {
+      maybeThrow("addTrigger");
+      triggers.add(label); // idempotent, like the server's INSERT OR IGNORE
+    },
+    async removeTrigger(label) {
+      maybeThrow("removeTrigger");
+      triggers.delete(label);
+    },
+    async listTriggers() {
+      maybeThrow("listTriggers");
+      return [...triggers];
+    },
   };
-  return { api, store, calls };
+  return { api, store, triggers, calls };
 }
 
-// A harness holding the client's entries + outbox in plain variables.
-function makeHooks(initEntries: Entry[], initQueue: PendingOp[]) {
+// A harness holding the client's entries + outboxes in plain variables.
+function makeHooks(initEntries: Entry[], initQueue: PendingOp[], initTriggerQueue: TriggerOp[] = []) {
   const state = {
     entries: [...initEntries],
     queue: [...initQueue],
     dropped: [] as PendingOp[],
+    triggerQueue: [...initTriggerQueue],
+    triggers: [] as string[],
   };
   const hooks: SyncHooks = {
     getQueue: () => state.queue,
@@ -79,6 +110,13 @@ function makeHooks(initEntries: Entry[], initQueue: PendingOp[]) {
     setStats: () => {},
     onDrop: (op) => {
       state.dropped.push(op);
+    },
+    getTriggerQueue: () => state.triggerQueue,
+    setTriggerQueue: (next) => {
+      state.triggerQueue = next;
+    },
+    setTriggers: (list) => {
+      state.triggers = list;
     },
   };
   return { state, hooks };
@@ -250,5 +288,55 @@ test("online sync with empty queue pulls authoritative state", async () => {
   assert.deepEqual(
     state.entries.map((e) => e.id),
     ["srv-1"]
+  );
+});
+
+// ---- custom triggers: optimistic add/remove replay against the server ----
+
+test("trigger outbox drains add + remove ops to the server", async () => {
+  const triggerQueue: TriggerOp[] = [
+    { kind: "add", label: "Boredom", ts: TS },
+    { kind: "remove", label: "Old", ts: TS },
+  ];
+  const { hooks, state } = makeHooks([], [], triggerQueue);
+  const { api, triggers } = makeApi();
+  triggers.add("Old"); // pre-existing on the server, to be removed
+
+  await flushTriggerQueue(api, hooks);
+
+  assert.equal(state.triggerQueue.length, 0, "trigger outbox drained");
+  assert.deepEqual([...triggers], ["Boredom"], "add applied, remove applied");
+});
+
+test("a network failure keeps the trigger op for retry", async () => {
+  const { hooks, state } = makeHooks([], [], [{ kind: "add", label: "Focus", ts: TS }]);
+  const { api, triggers } = makeApi({ addTrigger: [new TypeError("Failed to fetch")] });
+
+  await assert.rejects(() => flushTriggerQueue(api, hooks));
+  assert.equal(state.triggerQueue.length, 1, "op retained");
+  assert.equal(triggers.size, 0, "nothing reached the server");
+});
+
+test("a 4xx trigger op is dropped so it can't wedge the queue", async () => {
+  const { hooks, state } = makeHooks([], [], [{ kind: "add", label: "Bad", ts: TS }]);
+  const { api } = makeApi({ addTrigger: [new ApiError(400, "Bad Request")] });
+
+  await flushTriggerQueue(api, hooks);
+  assert.equal(state.triggerQueue.length, 0, "bad op dropped, not retried forever");
+});
+
+test("runSync flushes the trigger outbox then pulls the authoritative list", async () => {
+  const { hooks, state } = makeHooks([], [], [{ kind: "add", label: "Boredom", ts: TS }]);
+  const { api, triggers } = makeApi();
+  triggers.add("Stress"); // another device already added this
+
+  const res = await runSync(api, hooks);
+
+  assert.equal(res.ok, true);
+  assert.equal(state.triggerQueue.length, 0, "outbox drained");
+  assert.deepEqual(
+    [...state.triggers].sort(),
+    ["Boredom", "Stress"],
+    "local list replaced with the merged server truth"
   );
 });

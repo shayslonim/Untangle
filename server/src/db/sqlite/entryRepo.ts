@@ -160,4 +160,27 @@ export class SqliteEntryRepo implements EntryRepo {
       throw err;
     }
   }
+
+  async listTriggers(userId: string): Promise<string[]> {
+    const rows = this.db
+      .prepare("SELECT label FROM custom_triggers WHERE user_id = ? ORDER BY added_at")
+      .all(userId) as unknown as { label: string }[];
+    return rows.map((r) => r.label);
+  }
+
+  async addTrigger(userId: string, label: string): Promise<void> {
+    // Idempotent: replaying an offline add for an already-present label is a
+    // no-op rather than an error.
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO custom_triggers (user_id, label, added_at) VALUES (?, ?, ?)"
+      )
+      .run(userId, label, new Date().toISOString());
+  }
+
+  async removeTrigger(userId: string, label: string): Promise<void> {
+    this.db
+      .prepare("DELETE FROM custom_triggers WHERE user_id = ? AND label = ?")
+      .run(userId, label);
+  }
 }

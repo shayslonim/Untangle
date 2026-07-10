@@ -141,4 +141,27 @@ export class LibsqlEntryRepo implements EntryRepo {
     await this.db.batch(stmts, "write");
     return entries.length;
   }
+
+  async listTriggers(userId: string): Promise<string[]> {
+    const res = await this.db.execute({
+      sql: "SELECT label FROM custom_triggers WHERE user_id = ? ORDER BY added_at",
+      args: [userId],
+    });
+    return res.rows.map((r) => String(r.label));
+  }
+
+  async addTrigger(userId: string, label: string): Promise<void> {
+    // Idempotent (INSERT OR IGNORE) so replaying an offline add is safe.
+    await this.db.execute({
+      sql: "INSERT OR IGNORE INTO custom_triggers (user_id, label, added_at) VALUES (?, ?, ?)",
+      args: [userId, label, new Date().toISOString()],
+    });
+  }
+
+  async removeTrigger(userId: string, label: string): Promise<void> {
+    await this.db.execute({
+      sql: "DELETE FROM custom_triggers WHERE user_id = ? AND label = ?",
+      args: [userId, label],
+    });
+  }
 }

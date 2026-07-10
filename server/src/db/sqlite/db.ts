@@ -33,6 +33,20 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     // the pull tallies (see dailyCounts) but is still logged and celebrated.
     sql: `ALTER TABLE entries ADD COLUMN resisted INTEGER NOT NULL DEFAULT 0;`,
   },
+  {
+    name: "003_create_custom_triggers",
+    // User-added trigger suggestions, synced across devices. One row per
+    // (user, label); the PK makes add idempotent (INSERT OR IGNORE) so an
+    // offline outbox can be replayed safely.
+    sql: `
+      CREATE TABLE custom_triggers (
+        user_id   TEXT NOT NULL,
+        label     TEXT NOT NULL,
+        added_at  TEXT NOT NULL,
+        PRIMARY KEY (user_id, label)
+      );
+    `,
+  },
 ];
 
 function migrate(db: DatabaseSync): void {

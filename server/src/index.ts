@@ -13,6 +13,7 @@ import type { EntryRepo } from "./db/repo.js";
 import { entryRoutes } from "./routes/entries.js";
 import { statsRoutes } from "./routes/stats.js";
 import { dataRoutes } from "./routes/data.js";
+import { triggerRoutes } from "./routes/triggers.js";
 
 // Single-user for now. Auth (real accounts) is the top roadmap item; until
 // then every request is this fixed user. See CLAUDE.md.
@@ -73,6 +74,7 @@ async function main() {
   entryRoutes(app, repo, USER_ID);
   statsRoutes(app, repo, USER_ID);
   dataRoutes(app, repo, USER_ID);
+  triggerRoutes(app, repo, USER_ID);
 
   await app.listen({ port: PORT, host: "0.0.0.0" });
 }

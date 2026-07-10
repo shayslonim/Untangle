@@ -57,6 +57,17 @@ const MIGRATIONS: { name: string; sql: string }[] = [
     name: "002_add_resisted",
     sql: `ALTER TABLE entries ADD COLUMN resisted INTEGER NOT NULL DEFAULT 0;`,
   },
+  {
+    name: "003_create_custom_triggers",
+    sql: `
+      CREATE TABLE custom_triggers (
+        user_id   TEXT NOT NULL,
+        label     TEXT NOT NULL,
+        added_at  TEXT NOT NULL,
+        PRIMARY KEY (user_id, label)
+      );
+    `,
+  },
 ];
 
 async function migrate(db: Client): Promise<void> {

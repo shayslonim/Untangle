@@ -50,6 +50,25 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entries, replace }),
     }).then(json<{ imported: number }>),
+
+  listTriggers: () => fetch("/api/triggers").then(json<string[]>),
+
+  addTrigger: (label: string) =>
+    fetch("/api/triggers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    }).then(async (res) => {
+      if (!res.ok) throw new ApiError(res.status, res.statusText);
+    }),
+
+  removeTrigger: async (label: string) => {
+    // Label goes in the query (encoded) so slashes/spaces need no path escaping.
+    const res = await fetch(`/api/triggers?label=${encodeURIComponent(label)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+  },
 };
 
 export function localDayKey(d: Date): string {

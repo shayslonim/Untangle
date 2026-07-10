@@ -17,7 +17,9 @@ import type { Entry, Stats } from "./types";
 
 const ENTRIES_KEY = "untangle.cache.entries";
 const STATS_KEY = "untangle.cache.stats";
+const TRIGGERS_KEY = "untangle.cache.triggers";
 const QUEUE_KEY = "untangle.outbox";
+const TRIGGER_QUEUE_KEY = "untangle.triggerOutbox";
 const REMEMBER_KEY = "untangle.rememberDevice";
 
 // Defaults to true — only an explicit "false" disables it.
@@ -47,6 +49,24 @@ export function loadCachedEntries(): Entry[] | null {
 
 export function loadCachedStats(): Stats | null {
   return readJson<Stats>(STATS_KEY);
+}
+
+// User-added trigger suggestions (custom categories). Cached like entries — the
+// server is the source of truth; this just renders instantly on load.
+export function loadCachedTriggers(): string[] | null {
+  const v = readJson<string[]>(TRIGGERS_KEY);
+  return Array.isArray(v) ? v.filter((x) => typeof x === "string") : null;
+}
+
+export function cacheTriggers(triggers: string[]): boolean {
+  if (!loadRemember()) return true; // opted out — not a failure
+  try {
+    localStorage.setItem(TRIGGERS_KEY, JSON.stringify(triggers));
+    return true;
+  } catch (err) {
+    console.warn("[cache] failed to persist triggers", err);
+    return false;
+  }
 }
 
 // Persist the current view — only when the user has opted in. Returns false if
@@ -91,9 +111,33 @@ export function saveQueue(queue: PendingOp[]): boolean {
   }
 }
 
+// A queued custom-trigger change, replayed against the server (FIFO) once it's
+// reachable. Both kinds are idempotent server-side, so replay is always safe.
+// A local add-then-remove (or remove-then-add) of the same label is compacted
+// to nothing before it's ever sent (see App).
+export type TriggerOp =
+  | { kind: "add"; label: string; ts: string }
+  | { kind: "remove"; label: string; ts: string };
+
+export function loadTriggerQueue(): TriggerOp[] {
+  const v = readJson<TriggerOp[]>(TRIGGER_QUEUE_KEY);
+  return Array.isArray(v) ? v : [];
+}
+
+export function saveTriggerQueue(queue: TriggerOp[]): boolean {
+  if (!loadRemember()) return true; // session-only queue when opted out
+  try {
+    localStorage.setItem(TRIGGER_QUEUE_KEY, JSON.stringify(queue));
+    return true;
+  } catch (err) {
+    console.warn("[cache] failed to persist trigger outbox", err);
+    return false;
+  }
+}
+
 // Wipe everything this module owns. Called when the user turns "remember" off.
 export function clearCache(): void {
-  for (const k of [ENTRIES_KEY, STATS_KEY, QUEUE_KEY]) {
+  for (const k of [ENTRIES_KEY, STATS_KEY, TRIGGERS_KEY, QUEUE_KEY, TRIGGER_QUEUE_KEY]) {
     localStorage.removeItem(k);
   }
 }
