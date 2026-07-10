@@ -45,6 +45,44 @@ function loadShowSeconds(): boolean {
   return localStorage.getItem(SHOW_SECONDS_KEY) === "true";
 }
 
+// Multi-selects are compared order-insensitively so toggling a tag off then on
+// reads as unchanged (a revert), not a new value.
+function sameTags(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sb = [...b].sort();
+  return [...a].sort().every((x, i) => x === sb[i]);
+}
+
+// The fields that differ between an entry's original (last-synced) value and its
+// current one — i.e. the net patch to send. Empty means the edit was reverted,
+// so no update op is needed. Keeps the outbox holding only real changes.
+function changedFields(orig: Entry, cur: Entry): Partial<Entry> {
+  const p: Partial<Entry> = {};
+  if (orig.ts !== cur.ts) p.ts = cur.ts;
+  if (orig.mode !== cur.mode) p.mode = cur.mode;
+  if (orig.note !== cur.note) p.note = cur.note;
+  if (orig.resisted !== cur.resisted) p.resisted = cur.resisted;
+  if (!sameTags(orig.sites, cur.sites)) p.sites = cur.sites;
+  if (!sameTags(orig.triggers, cur.triggers)) p.triggers = cur.triggers;
+  return p;
+}
+
+// The outbox key an op targets: a create is keyed by its tempId, which is also
+// the id later edits/deletes of that not-yet-synced entry reference.
+function opKey(op: PendingOp): string {
+  return op.kind === "create" ? op.tempId : op.id;
+}
+
+// Ids of the visible entries that have unsynced changes queued — a create (new
+// entry) or an update (edited entry). Deletes are excluded: their row is gone.
+// Used to flag rows "not synced yet"; a reverted edit drops its op, so its id
+// falls out of this set automatically.
+function pendingIdsOf(queue: PendingOp[]): Set<string> {
+  const ids = new Set<string>();
+  for (const op of queue) if (op.kind !== "delete") ids.add(opKey(op));
+  return ids;
+}
+
 function loadCustomTriggers(): string[] {
   try {
     const v = JSON.parse(localStorage.getItem(CUSTOM_TRIGGERS_KEY) ?? "[]");
@@ -78,9 +116,17 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // The outbox lives in a ref (authoritative, no stale closures during a drain)
-  // with a count mirrored into state for the banner.
+  // with a count mirrored into state for the banner. It's kept compacted (see
+  // the enqueue helpers) so it holds only net changes — a create+delete or an
+  // edit-then-revert leaves nothing behind — and the count is just its length.
   const outboxRef = useRef<PendingOp[]>(loadQueue());
   const [pendingCount, setPendingCount] = useState(outboxRef.current.length);
+  // Ids of rows with unsynced changes, for the "not synced yet" row flag.
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => pendingIdsOf(outboxRef.current));
+  // Each edited-but-not-yet-synced existing entry's original (last-synced) value,
+  // so an edit that returns to it can be recognised as a revert and dropped.
+  // In-memory only: cleared when the queue drains on a successful sync.
+  const originalsRef = useRef<Map<string, Entry>>(new Map());
   // Coalesce overlapping syncs: if one is requested while another runs, re-run
   // once it finishes rather than dropping it.
   const syncingRef = useRef(false);
@@ -105,14 +151,11 @@ export function App() {
     (next: PendingOp[]) => {
       outboxRef.current = next;
       setPendingCount(next.length);
+      setPendingIds(pendingIdsOf(next));
+      if (next.length === 0) originalsRef.current.clear(); // drained → no pending originals
       notePersist(saveQueue(next));
     },
     [notePersist]
-  );
-
-  const enqueue = useCallback(
-    (op: PendingOp) => commitQueue([...outboxRef.current, op]),
-    [commitQueue]
   );
 
   // Persist the current view whenever it changes (no-op when remember is off).
@@ -254,7 +297,8 @@ export function App() {
     };
     setEntries((prev) => [optimistic, ...prev]);
     flash(successMsg);
-    enqueue({ kind: "create", tempId, patch, ts: new Date().toISOString() });
+    // A create for a brand-new entry — unique key, nothing to coalesce.
+    commitQueue([...outboxRef.current, { kind: "create", tempId, patch, ts: new Date().toISOString() }]);
     sync();
   };
 
@@ -263,18 +307,52 @@ export function App() {
   const onResist = () =>
     createOptimistic({ resisted: true }, "Urge resisted — that's a win 💪");
 
-  // Optimistic edit: apply the patch right away, then queue it.
+  // Fold an edit into the outbox as a single NET change. If the entry hasn't
+  // synced yet, merge it into the pending create. Otherwise keep a lone update
+  // op — but if the entry is now back to its original (last-synced) value, drop
+  // the op entirely so a revert leaves nothing queued.
+  const reconcileEdit = (id: string, before: Entry, after: Entry, patch: Partial<Entry>) => {
+    const q = outboxRef.current;
+    if (q.some((o) => o.kind === "create" && o.tempId === id)) {
+      commitQueue(
+        q.map((o) =>
+          o.kind === "create" && o.tempId === id ? { ...o, patch: { ...o.patch, ...patch } } : o
+        )
+      );
+      return;
+    }
+    if (!originalsRef.current.has(id)) originalsRef.current.set(id, before);
+    const net = changedFields(originalsRef.current.get(id)!, after);
+    const rest = q.filter((o) => !(o.kind === "update" && o.id === id));
+    if (Object.keys(net).length === 0) {
+      originalsRef.current.delete(id); // reverted — nothing to send
+      commitQueue(rest);
+    } else {
+      commitQueue([...rest, { kind: "update", id, patch: net, ts: new Date().toISOString() }]);
+    }
+  };
+
+  // Optimistic edit: apply the patch right away, then reconcile the outbox.
   const onPatch = (id: string, patch: Partial<Entry>) => {
+    const before = entries.find((e) => e.id === id);
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-    enqueue({ kind: "update", id, patch, ts: new Date().toISOString() });
+    if (before) reconcileEdit(id, before, { ...before, ...patch }, patch);
     sync();
   };
 
-  // Optimistic delete: remove immediately, then queue it.
+  // Optimistic delete: remove immediately, then reconcile the outbox — a
+  // not-yet-synced entry's queued ops are dropped wholesale (create+delete nets
+  // to nothing); an existing entry keeps a single delete.
   const onDelete = (id: string) => {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     flash("Entry removed");
-    enqueue({ kind: "delete", id, ts: new Date().toISOString() });
+    originalsRef.current.delete(id);
+    const q = outboxRef.current;
+    const withoutId = q.filter((o) => opKey(o) !== id);
+    const pendingCreate = q.some((o) => o.kind === "create" && o.tempId === id);
+    commitQueue(
+      pendingCreate ? withoutId : [...withoutId, { kind: "delete", id, ts: new Date().toISOString() }]
+    );
     sync();
   };
 
@@ -350,6 +428,7 @@ export function App() {
             onRemoveCustomTrigger={removeCustomTrigger}
             showSeconds={showSeconds}
             markUnsynced={showDisconnected}
+            pendingIds={pendingIds}
           />
         ) : (
           <Trends stats={stats} onImported={() => sync()} flash={flash} />

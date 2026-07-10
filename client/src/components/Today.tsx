@@ -13,6 +13,7 @@ export function Today({
   onRemoveCustomTrigger,
   showSeconds,
   markUnsynced,
+  pendingIds,
 }: {
   entries: Entry[];
   onLog: () => void;
@@ -23,9 +24,12 @@ export function Today({
   onAddCustomTrigger: (opt: string) => void;
   onRemoveCustomTrigger: (opt: string) => void;
   showSeconds: boolean;
-  // When true, entries still awaiting their first successful sync (temp ids)
-  // get a "not synced" label. Delayed upstream so fast online saves don't flash.
+  // When true, entries with unsynced changes get a "not synced" label. Delayed
+  // upstream so fast online saves don't flash it.
   markUnsynced: boolean;
+  // Ids of entries with a queued create or update (created/edited, not synced).
+  // A reverted edit drops out of this set, so its label clears automatically.
+  pendingIds: Set<string>;
 }) {
   const todayKey = localDayKey(new Date());
   const today = entries
@@ -80,7 +84,7 @@ export function Today({
               key={e.id}
               entry={e}
               showSeconds={showSeconds}
-              unsynced={markUnsynced && e.id.startsWith("temp-")}
+              unsynced={markUnsynced && pendingIds.has(e.id)}
               onPatch={(patch) => onPatch(e.id, patch)}
               onDelete={() => onDelete(e.id)}
               customTriggers={customTriggers}
