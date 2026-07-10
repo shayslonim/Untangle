@@ -35,7 +35,7 @@ type FailKind = "network" | "http" | null;
 const CUSTOM_TRIGGERS_KEY = "untangle.customTriggers";
 
 // How long to wait between reconnection attempts while offline.
-const RETRY_MS = 8000;
+const RETRY_MS = 3000;
 
 // Display preference: show log times to the second. On-device only — timestamps
 // are always stored and exported with full precision regardless.
