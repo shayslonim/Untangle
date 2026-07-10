@@ -294,10 +294,10 @@ export function App() {
         sub: n > 0 ? `${n} change${n === 1 ? "" : "s"} will sync when you reconnect` : undefined,
       };
     }
-    // Countdown to the next scheduled retry: "in 5s" while pending, "…" when
-    // it's due / a request is in flight.
+    // Countdown to the next scheduled retry: " in 3s" … " in 0s". Every value
+    // is the same width, so the line never reflows as it ticks down.
     const secsLeft = nextRetryAt ? Math.max(0, Math.ceil((nextRetryAt - Date.now()) / 1000)) : null;
-    const retry = secsLeft && secsLeft > 0 ? ` in ${secsLeft}s` : "…";
+    const retry = secsLeft !== null ? ` in ${secsLeft}s` : "";
     if (lastFailKind === "http") {
       return { cls: "banner", text: `The server is having trouble — retrying${retry}`, sub: queued };
     }
