@@ -5,6 +5,7 @@ import {
   isTransient,
   flushQueue,
   flushTriggerQueue,
+  reconcileTriggers,
   runSync,
   type SyncApi,
   type SyncHooks,
@@ -338,5 +339,44 @@ test("runSync flushes the trigger outbox then pulls the authoritative list", asy
     [...state.triggers].sort(),
     ["Boredom", "Stress"],
     "local list replaced with the merged server truth"
+  );
+});
+
+// ---- the flicker fix: a pending op survives a pull that raced ahead of it ----
+
+test("reconcileTriggers keeps a pending add and drops a pending remove", () => {
+  const out = reconcileTriggers(
+    ["Stress", "Old"],
+    [
+      { kind: "add", label: "Boredom", ts: TS },
+      { kind: "remove", label: "Old", ts: TS },
+    ]
+  );
+  assert.deepEqual(out.sort(), ["Boredom", "Stress"], "add re-applied, remove re-applied");
+});
+
+test("reconcileTriggers is a no-op when the outbox is empty", () => {
+  assert.deepEqual(reconcileTriggers(["A", "B"], []), ["A", "B"]);
+});
+
+test("runSync's pull does not clobber an add enqueued mid-sync (no flicker)", async () => {
+  const { hooks, state } = makeHooks([], []);
+  const { api, triggers } = makeApi();
+  triggers.add("Stress");
+  // Simulate the user optimistically adding "Boredom" WHILE the pull is in
+  // flight — after this sync's flush already ran, so the pulled list won't
+  // include it. The op is still in the outbox; reconcile must preserve it.
+  const origList = api.listTriggers;
+  api.listTriggers = async () => {
+    state.triggerQueue = [{ kind: "add", label: "Boredom", ts: TS }];
+    return origList();
+  };
+
+  await runSync(api, hooks);
+
+  assert.deepEqual(
+    [...state.triggers].sort(),
+    ["Boredom", "Stress"],
+    "optimistic add preserved through the stale pull — no flicker"
   );
 });

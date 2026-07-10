@@ -112,6 +112,22 @@ export async function flushTriggerQueue(api: SyncApi, hooks: SyncHooks): Promise
   }
 }
 
+// Re-apply still-pending outbox ops on top of the server's authoritative list.
+// Without this, a pull that raced ahead of a just-enqueued add/remove (two
+// syncs overlap: one is mid-pull when the user toggles a category) would
+// overwrite the optimistic UI with a list that doesn't yet reflect the pending
+// op — the category flickers off then back on when the retry re-pulls. Applying
+// pending ops here keeps the optimistic state stable until the op actually
+// drains. Order-preserving; both ops are idempotent so this is safe to repeat.
+export function reconcileTriggers(serverList: string[], queue: TriggerOp[]): string[] {
+  const set = new Set(serverList);
+  for (const op of queue) {
+    if (op.kind === "add") set.add(op.label);
+    else set.delete(op.label);
+  }
+  return [...set];
+}
+
 // Full sync: flush the outboxes, THEN pull authoritative state. The ordering is
 // the safety-critical part — the list fetch only runs once the outboxes have
 // fully drained, so a write that's still queued for retry (a transient failure
@@ -128,7 +144,9 @@ export async function runSync(api: SyncApi, hooks: SyncHooks): Promise<SyncResul
     ]);
     hooks.setEntries(() => entries);
     hooks.setStats(stats);
-    hooks.setTriggers(triggers);
+    // Reconcile against the live outbox — a concurrent optimistic add/remove
+    // enqueued while this sync was pulling must survive this overwrite.
+    hooks.setTriggers(reconcileTriggers(triggers, hooks.getTriggerQueue()));
     return { ok: true, failKind: null };
   } catch (err) {
     return { ok: false, failKind: err instanceof ApiError ? "http" : "network" };
