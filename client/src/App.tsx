@@ -34,6 +34,9 @@ type FailKind = "network" | "http" | null;
 // per-entry data). Selected triggers themselves are still stored per entry.
 const CUSTOM_TRIGGERS_KEY = "untangle.customTriggers";
 
+// How long to wait between reconnection attempts while offline.
+const RETRY_MS = 8000;
+
 // Display preference: show log times to the second. On-device only — timestamps
 // are always stored and exported with full precision regardless.
 const SHOW_SECONDS_KEY = "untangle.showSeconds";
@@ -64,7 +67,10 @@ export function App() {
   // Delay before showing any "trying to connect" banner, so warm loads that
   // resolve in <1s never flash it.
   const [showDisconnected, setShowDisconnected] = useState(false);
-  // Forces the banner to recompute the elapsed-time escalation while offline.
+  // When the next retry is scheduled (ms epoch), for the banner countdown; null
+  // when online or no retry pending.
+  const [nextRetryAt, setNextRetryAt] = useState<number | null>(null);
+  // Forces the banner to recompute the countdown / elapsed-time escalation.
   const [, setTick] = useState(0);
   const [customTriggers, setCustomTriggers] = useState<string[]>(loadCustomTriggers);
   const [showSeconds, setShowSeconds] = useState<boolean>(loadShowSeconds);
@@ -81,11 +87,6 @@ export function App() {
   const rerunRef = useRef(false);
   // One-time warning if on-device persistence fails (quota / private mode).
   const persistWarnedRef = useRef(false);
-  // Read serverStatus from the retry interval without re-creating the effect.
-  const statusRef = useRef(serverStatus);
-  useEffect(() => {
-    statusRef.current = serverStatus;
-  }, [serverStatus]);
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -153,11 +154,13 @@ export function App() {
           setServerStatus("online");
           setFirstFailAt(null);
           setLastFailKind(null);
+          setNextRetryAt(null);
         } else {
           setServerStatus("offline");
           setLastFailKind(res.failKind);
           setFirstFailAt((prev) => prev ?? Date.now());
-          break; // let the retry interval try again
+          setNextRetryAt(Date.now() + RETRY_MS); // schedule + countdown
+          break;
         }
       } while (rerunRef.current);
     } finally {
@@ -165,20 +168,21 @@ export function App() {
     }
   }, [syncHooks]);
 
-  // Initial load + reconnection handling. Retries every 8s while not online so a
-  // cold-started server (or a dropped connection) recovers on its own.
+  // Initial load + reconnect on the browser regaining network.
   useEffect(() => {
     sync();
     const onOnline = () => sync();
     window.addEventListener("online", onOnline);
-    const iv = window.setInterval(() => {
-      if (statusRef.current !== "online") sync();
-    }, 8000);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.clearInterval(iv);
-    };
+    return () => window.removeEventListener("online", onOnline);
   }, [sync]);
+
+  // Scheduled retry: each failed sync sets nextRetryAt, and this fires the next
+  // attempt at that time. A fresh failure sets a new nextRetryAt, re-arming it.
+  useEffect(() => {
+    if (nextRetryAt === null) return;
+    const t = window.setTimeout(() => sync(), Math.max(0, nextRetryAt - Date.now()));
+    return () => window.clearTimeout(t);
+  }, [nextRetryAt, sync]);
 
   // Only show a "trying to connect" banner if we stay offline past ~1s — a warm
   // load flips to online well before then, so it never flashes.
@@ -191,13 +195,13 @@ export function App() {
     return () => window.clearTimeout(t);
   }, [serverStatus]);
 
-  // While offline, tick every 5s so the banner can recompute the elapsed-time
-  // escalation ("waking up" → "taking a while") even if nothing else changes.
+  // While a retry is pending, tick every second so the banner countdown and the
+  // elapsed-time escalation stay current.
   useEffect(() => {
-    if (serverStatus === "online") return;
-    const iv = window.setInterval(() => setTick((t) => t + 1), 5000);
+    if (nextRetryAt === null) return;
+    const iv = window.setInterval(() => setTick((t) => t + 1), 1000);
     return () => window.clearInterval(iv);
-  }, [serverStatus]);
+  }, [nextRetryAt]);
 
   const toggleShowSeconds = (next: boolean) => {
     setShowSeconds(next);
@@ -289,12 +293,16 @@ export function App() {
         text: `You're offline${n > 0 ? ` — ${n} change${n === 1 ? "" : "s"} will sync when you reconnect` : ""}.`,
       };
     }
+    // Countdown to the next scheduled retry: "in 5s" while pending, "…" when
+    // it's due / a request is in flight.
+    const secsLeft = nextRetryAt ? Math.max(0, Math.ceil((nextRetryAt - Date.now()) / 1000)) : null;
+    const retry = secsLeft && secsLeft > 0 ? ` in ${secsLeft}s` : "…";
     if (lastFailKind === "http") {
-      return { cls: "banner", text: `The server is having trouble — retrying…${queued}` };
+      return { cls: "banner", text: `The server is having trouble — retrying${retry}${queued}` };
     }
     const elapsed = firstFailAt ? Date.now() - firstFailAt : 0;
-    const base = elapsed > 45000 ? "Server's taking a while — still trying…" : "Waking up the server…";
-    return { cls: "banner calm", text: `${base}${queued}` };
+    const base = elapsed > 45000 ? "Server's taking a while" : "Waking up the server";
+    return { cls: "banner calm", text: `${base} — retrying${retry}${queued}` };
   })();
 
   return (
