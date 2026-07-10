@@ -37,6 +37,11 @@ const CUSTOM_TRIGGERS_KEY = "untangle.customTriggers";
 // How long to wait between reconnection attempts while offline.
 const RETRY_MS = 3000;
 
+// Rough time a cold Render instance takes to boot (~50s in practice; we round up
+// to a minute so the countdown rarely hits zero before the server is actually
+// up). Used only to show an estimated "ready in ~Ns" countdown while waking.
+const BOOT_ESTIMATE_MS = 60000;
+
 // Display preference: show log times to the second. On-device only — timestamps
 // are always stored and exported with full precision regardless.
 const SHOW_SECONDS_KEY = "untangle.showSeconds";
@@ -379,9 +384,15 @@ export function App() {
     if (lastFailKind === "http") {
       return { cls: "banner", text: `The server is having trouble — retrying${retry}`, sub: queued };
     }
+    // Estimated time until a cold server finishes booting, counting down from
+    // ~60s. While it's positive we show it ("ready in ~Ns"); once it passes the
+    // estimate the boot is running long, so we drop to the plain retry copy.
     const elapsed = firstFailAt ? Date.now() - firstFailAt : 0;
-    const base = elapsed > 45000 ? "Server's taking a while" : "Waking up the server";
-    return { cls: "banner calm", text: `${base} — retrying${retry}`, sub: queued };
+    const bootLeft = Math.max(0, Math.ceil((BOOT_ESTIMATE_MS - elapsed) / 1000));
+    if (bootLeft > 0) {
+      return { cls: "banner calm", text: `Waking up the server — ready in ~${bootLeft}s`, sub: queued };
+    }
+    return { cls: "banner calm", text: `Server's taking a while — retrying${retry}`, sub: queued };
   })();
 
   return (
