@@ -655,6 +655,13 @@ button.btn {
   font-size: 14px;
   text-align: center;
 }
+/* Secondary line — e.g. the count of changes waiting to sync. */
+.banner-sub {
+  margin-top: 2px;
+  font-weight: 600;
+  font-size: 12px;
+  opacity: 0.8;
+}
 /* Calm variant — "waking up" / "syncing": informational, never alarming. */
 .banner.calm {
   background: color-mix(in srgb, var(--periwinkle) 45%, #fff);

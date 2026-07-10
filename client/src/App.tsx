@@ -283,14 +283,15 @@ export function App() {
   // failing vs server unreachable/booting — and, if any writes are queued, notes
   // that they'll sync on reconnect. When online there's no banner: the retry is
   // already conveyed by these messages, and a one-shot write needs no indicator.
-  const banner: { cls: string; text: string } | null = (() => {
+  const banner: { cls: string; text: string; sub?: string } | null = (() => {
     if (serverStatus === "online" || !showDisconnected) return null;
     const n = pendingCount;
-    const queued = n > 0 ? ` — ${n} change${n === 1 ? "" : "s"} queued` : "";
+    const queued = n > 0 ? `${n} change${n === 1 ? "" : "s"} queued` : undefined;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       return {
         cls: "banner",
-        text: `You're offline${n > 0 ? ` — ${n} change${n === 1 ? "" : "s"} will sync when you reconnect` : ""}.`,
+        text: "You're offline.",
+        sub: n > 0 ? `${n} change${n === 1 ? "" : "s"} will sync when you reconnect` : undefined,
       };
     }
     // Countdown to the next scheduled retry: "in 5s" while pending, "…" when
@@ -298,11 +299,11 @@ export function App() {
     const secsLeft = nextRetryAt ? Math.max(0, Math.ceil((nextRetryAt - Date.now()) / 1000)) : null;
     const retry = secsLeft && secsLeft > 0 ? ` in ${secsLeft}s` : "…";
     if (lastFailKind === "http") {
-      return { cls: "banner", text: `The server is having trouble — retrying${retry}${queued}` };
+      return { cls: "banner", text: `The server is having trouble — retrying${retry}`, sub: queued };
     }
     const elapsed = firstFailAt ? Date.now() - firstFailAt : 0;
     const base = elapsed > 45000 ? "Server's taking a while" : "Waking up the server";
-    return { cls: "banner calm", text: `${base} — retrying${retry}${queued}` };
+    return { cls: "banner calm", text: `${base} — retrying${retry}`, sub: queued };
   })();
 
   return (
@@ -329,7 +330,12 @@ export function App() {
         </div>
       </header>
 
-      {banner && <div className={banner.cls}>{banner.text}</div>}
+      {banner && (
+        <div className={banner.cls}>
+          <div>{banner.text}</div>
+          {banner.sub && <div className="banner-sub">{banner.sub}</div>}
+        </div>
+      )}
 
       <main className="container">
         {view === "today" ? (
